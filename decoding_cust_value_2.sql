@@ -113,3 +113,35 @@ SELECT
         (SELECT AVG(`purchase_amount_(usd)`) FROM customers WHERE gender = 'Female') * 0.5 +
         (SELECT AVG(`purchase_amount_(usd)`) FROM customers WHERE gender = 'Male') * 0.5
     , 2) AS avg_spend;
+
+
+-- 7. P&L IMPACT TABLE: What does stopping discounts actually earn? Assuming average discount = 15% of purchase amount
+    
+SELECT 
+    segment,
+    COUNT(*) AS n,
+    ROUND(AVG(`purchase_amount_(usd)`), 2) AS avg_spend,
+    ROUND(SUM(`purchase_amount_(usd)`), 0) AS total_revenue,
+-- Estimated margin lost to discounts per segment
+    ROUND(SUM(CASE WHEN discount_applied = 1 THEN (`purchase_amount_(usd)`/0.85) *0.15 ELSE 0 END), 0) AS margin_lost,
+-- If we stop discounting this segment, what margin do we recover?
+    ROUND(
+		SUM(
+			CASE WHEN discount_applied = 1 
+			     THEN (`purchase_amount_(usd)`/0.85) *0.15 * 
+					CASE WHEN segment = 'Organic Loyals' THEN 1.0
+						 WHEN segment = 'Promo Dependent' THEN 0.3
+						 ELSE 0.1 END
+				 ELSE 0	END), 0
+	) AS recoverable_margin,
+    CASE
+        WHEN segment = 'Organic Loyals'
+            THEN '100% recoverable, as they already buy without discounts'
+        WHEN segment = 'Promo Dependent'
+            THEN '~30% recoverable, some will stay without discounts'
+        WHEN segment = 'Disengaged'
+            THEN '~10% recoverable, as most will not repurchase anyway'
+    END AS recovery_logic
+FROM customers
+GROUP BY segment
+ORDER BY recoverable_margin DESC;
